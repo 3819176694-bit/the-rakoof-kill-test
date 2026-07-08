@@ -1,0 +1,544 @@
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+local oldNamecall
+oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+    if getnamecallmethod() == "Kick" and self == LocalPlayer then
+        return wait(math.huge)
+    end
+    return oldNamecall(self, ...)
+end)
+
+local state = {
+    God = false,
+    ESP = false,
+    Speed = false,
+    Noclip = false,
+    RemoveAOE = false,
+    RainbowESP = false,
+    InfiniteJump = false,
+    AntiAFK = false,
+    ExpandHitbox = false,
+    InfiniteStamina = false,
+    RailgunIK = false
+}
+
+local espObjects = {}
+local originalTouchStates = {}
+local activeConnections = {}
+local originalSpeeds = {}
+local removedAOEAttachments = {}
+local expandedHitboxes = {}
+local originalJumpPower = {}
+local jumpConnection = nil
+local staminaConnection = nil
+local modeConnection = nil
+local modeLabel = nil
+
+local function addConnection(con)
+    table.insert(activeConnections, con)
+    return con
+end
+
+local function clearConnections()
+    for _, c in ipairs(activeConnections) do
+        pcall(c.Disconnect, c)
+    end
+    activeConnections = {}
+    if jumpConnection then jumpConnection:Disconnect(); jumpConnection = nil end
+    if staminaConnection then staminaConnection:Disconnect(); staminaConnection = nil end
+    if modeConnection then modeConnection:Disconnect(); modeConnection = nil end
+end
+
+local function executeKillAura()
+    local url = "https://rawscripts.net/raw/Universal-Script-Universal-npc-hub-79259"
+    local success, result = pcall(function()
+        local content = game:HttpGet(url, true)
+        if content and #content > 0 then
+            loadstring(content)()
+            return true
+        end
+        return false
+    end)
+    if success and result then
+        Rayfield:Notify({Title="杀戮光环", Content="已激活", Duration=5})
+        return
+    end
+    local backup = "https://raw.githubusercontent.com/sergeevilya009-gif/What_are_you_looking_at/main/go_away"
+    local bkOk = pcall(function()
+        local c = game:HttpGet(backup, true)
+        if c and #c > 0 then loadstring(c)(); return true end
+        return false
+    end)
+    if bkOk then
+        Rayfield:Notify({Title="杀戮光环", Content="备用链接已激活", Duration=5})
+        return
+    end
+    local cd = 0
+    local conn = RunService.Heartbeat:Connect(function()
+        if cd > 0 then cd = cd - 1; return end
+        local char = LocalPlayer.Character
+        if not char then return end
+        local hum = char:FindFirstChild("Humanoid")
+        local root = char:FindFirstChild("HumanoidRootPart")
+        if not hum or not root then return end
+        local nearest, minDist = nil, math.huge
+        for _, plr in pairs(Players:GetPlayers()) do
+            if plr ~= LocalPlayer and plr.Character then
+                local ehum = plr.Character:FindFirstChild("Humanoid")
+                local eroot = plr.Character:FindFirstChild("HumanoidRootPart")
+                if ehum and ehum.Health > 0 and eroot then
+                    local d = (root.Position - eroot.Position).Magnitude
+                    if d < 25 and d < minDist then
+                        minDist = d; nearest = {humanoid = ehum, root = eroot}
+                    end
+                end
+            end
+        end
+        if nearest and minDist < 15 then
+            nearest.humanoid:TakeDamage(25)
+            cd = 15
+            local eff = Instance.new("Part")
+            eff.Size = Vector3.new(1,1,1); eff.Position = nearest.root.Position
+            eff.Anchored = true; eff.CanCollide = false; eff.Transparency = 0.5
+            eff.Color = Color3.fromRGB(255,0,0); eff.Material = Enum.Material.Neon
+            eff.Parent = Workspace
+            task.wait(0.2); eff:Destroy()
+        end
+    end)
+    addConnection(conn)
+    Rayfield:Notify({Title="杀戮光环", Content="内置版已激活", Duration=5})
+end
+
+local function findRailgun()
+    local char = LocalPlayer.Character
+    if char then
+        for _, t in pairs(char:GetChildren()) do
+            if t:IsA("Tool") and t.Name:lower():find("rail") then return t end
+        end
+    end
+    local bp = LocalPlayer:FindFirstChild("Backpack")
+    if bp then
+        for _, t in pairs(bp:GetChildren()) do
+            if t:IsA("Tool") and t.Name:lower():find("rail") then return t end
+        end
+    end
+    return nil
+end
+
+local function enableRailgunIK()
+    local conn = RunService.Heartbeat:Connect(function()
+        if not state.RailgunIK then return end
+        local tool = findRailgun()
+        if not tool then return end
+        for _, obj in pairs(tool:GetDescendants()) do
+            local n = obj.Name:lower()
+            if n:find("damage") or n:find("dmg") then pcall(function() obj.Value = 999999 end) end
+            if n:find("cooldown") or n:find("nextfire") or n:find("firerate") or n:find("delay") then pcall(function() obj.Value = 0 end) end
+            if n:find("range") or n:find("distance") then pcall(function() obj.Value = 9999 end) end
+        end
+    end)
+    addConnection(conn)
+end
+
+local function enableGod()
+    local conn = RunService.Heartbeat:Connect(function()
+        if not state.God then return end
+        local char = LocalPlayer.Character
+        if char then
+            for _, part in pairs(char:GetDescendants()) do
+                if part:IsA("BasePart") and part.CanTouch then
+                    if not originalTouchStates[part] then originalTouchStates[part] = part.CanTouch end
+                    part.CanTouch = false
+                end
+            end
+        end
+    end)
+    addConnection(conn)
+end
+
+local function disableGod()
+    for part, orig in pairs(originalTouchStates) do
+        if part and part.Parent then part.CanTouch = orig end
+    end
+    originalTouchStates = {}
+end
+
+local function enableSpeed()
+    local conn = RunService.Heartbeat:Connect(function()
+        if not state.Speed then return end
+        local char = LocalPlayer.Character
+        if char then
+            local hum = char:FindFirstChild("Humanoid")
+            if hum then
+                if not originalSpeeds[hum] then originalSpeeds[hum] = hum.WalkSpeed end
+                hum.WalkSpeed = 70
+            end
+        end
+    end)
+    addConnection(conn)
+end
+
+local function disableSpeed()
+    local char = LocalPlayer.Character
+    if char then
+        local hum = char:FindFirstChild("Humanoid")
+        if hum and originalSpeeds[hum] then hum.WalkSpeed = originalSpeeds[hum] end
+    end
+end
+
+local function enableNoclip()
+    local conn = RunService.Stepped:Connect(function()
+        if not state.Noclip then return end
+        local char = LocalPlayer.Character
+        if char then
+            for _, part in pairs(char:GetDescendants()) do
+                if part:IsA("BasePart") then part.CanCollide = false end
+            end
+        end
+    end)
+    addConnection(conn)
+end
+
+local function disableNoclip()
+    local char = LocalPlayer.Character
+    if char then
+        for _, part in pairs(char:GetDescendants()) do
+            if part:IsA("BasePart") then part.CanCollide = true end
+        end
+    end
+end
+
+local function enableInfJump()
+    if jumpConnection then jumpConnection:Disconnect() end
+    jumpConnection = UserInputService.JumpRequest:Connect(function()
+        if not state.InfiniteJump then return end
+        local char = LocalPlayer.Character
+        if char then
+            local hum = char:FindFirstChild("Humanoid")
+            if hum then
+                if not originalJumpPower[hum] then originalJumpPower[hum] = hum.JumpPower end
+                hum:ChangeState(Enum.HumanoidStateType.Jumping)
+            end
+        end
+    end)
+    addConnection(jumpConnection)
+end
+
+local function disableInfJump()
+    for hum, pow in pairs(originalJumpPower) do
+        if hum and hum.Parent then hum.JumpPower = pow end
+    end
+    originalJumpPower = {}
+end
+
+local function enableInfStamina()
+    local function lockStamina()
+        local path = PlayerGui:FindFirstChild("ClassChose")
+        if not path then return false end
+        path = path:FindFirstChild("MainFrame")
+        if not path then return false end
+        path = path:FindFirstChild("INFRAAME")
+        if not path then return false end
+        path = path:FindFirstChild("STATS")
+        if not path then return false end
+        path = path:FindFirstChild("Stamina")
+        if not path then return false end
+        local val = path:FindFirstChild("CurrentStamina")
+        if not val or not val:IsA("IntValue") then return false end
+        val.Value = 120
+        staminaConnection = val.Changed:Connect(function(nv)
+            if state.InfiniteStamina and nv ~= 120 then val.Value = 120 end
+        end)
+        return true
+    end
+    if not lockStamina() then
+        for _, obj in pairs(PlayerGui:GetDescendants()) do
+            if obj.Name == "CurrentStamina" and obj:IsA("IntValue") then
+                obj.Value = 120
+                staminaConnection = obj.Changed:Connect(function(nv)
+                    if state.InfiniteStamina and nv ~= 120 then obj.Value = 120 end
+                end)
+                break
+            end
+        end
+    end
+end
+
+local function disableInfStamina()
+    if staminaConnection then staminaConnection:Disconnect(); staminaConnection = nil end
+end
+
+local function enableRemoveAOE()
+    local conn = RunService.Heartbeat:Connect(function()
+        if not state.RemoveAOE then return end
+        for _, obj in pairs(Workspace:GetChildren()) do
+            if obj.Name:lower():find("the.rake") and obj:IsA("Model") then
+                for _, child in pairs(obj:GetDescendants()) do
+                    if child.Name == "AOEAtt" and child:IsA("Attachment") then
+                        if not removedAOEAttachments[child] then child:Destroy(); removedAOEAttachments[child] = true end
+                    end
+                    if child.Name:lower():find("aoe") and (child:IsA("Script") or child:IsA("LocalScript")) then
+                        if not removedAOEAttachments[child] then child.Disabled = true; removedAOEAttachments[child] = true end
+                    end
+                end
+            end
+        end
+    end)
+    addConnection(conn)
+end
+
+local function disableRemoveAOE()
+    removedAOEAttachments = {}
+end
+
+local function enableExpandHitbox()
+    local conn = RunService.Heartbeat:Connect(function()
+        if not state.ExpandHitbox then return end
+        for _, obj in pairs(Workspace:GetChildren()) do
+            if (obj.Name:lower():find("rake") or obj.Name:lower():find("the.rake")) and obj:IsA("Model") then
+                if not expandedHitboxes[obj] then
+                    local pp = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
+                    if pp then
+                        local orig = pp.Size
+                        pp.Size = orig * 5
+                        pp.Transparency = 0.3
+                        pp.Color = Color3.fromRGB(255,0,0)
+                        local adorn = Instance.new("BoxHandleAdornment")
+                        adorn.Name = "TRKT_Expanded"; adorn.Adornee = pp; adorn.AlwaysOnTop = true
+                        adorn.Size = pp.Size; adorn.Color3 = Color3.fromRGB(255,0,0); adorn.Transparency = 0.5
+                        adorn.Parent = pp
+                        expandedHitboxes[obj] = {pp = pp, orig = orig, adorn = adorn}
+                    end
+                end
+            end
+        end
+    end)
+    addConnection(conn)
+end
+
+local function disableExpandHitbox()
+    for _, data in pairs(expandedHitboxes) do
+        if data.pp and data.pp.Parent then data.pp.Size = data.orig; data.pp.Transparency = 0; data.pp.Color = Color3.fromRGB(255,255,255) end
+        if data.adorn then pcall(data.adorn.Destroy, data.adorn) end
+    end
+    expandedHitboxes = {}
+end
+
+local function enableAntiAFK()
+    local last = tick()
+    local conn = RunService.Heartbeat:Connect(function()
+        if not state.AntiAFK then return end
+        if tick() - last > 20 then
+            last = tick()
+            pcall(function() LocalPlayer:RequestMove(Vector3.new(0,0,0)) end)
+        end
+    end)
+    addConnection(conn)
+end
+
+local function findRakes()
+    local rakes = {}
+    for _, obj in pairs(Workspace:GetChildren()) do
+        if obj.Name:lower():find("rake") or obj.Name:lower():find("the.rake") then table.insert(rakes, obj) end
+    end
+    return rakes
+end
+
+local function createESP(obj)
+    if espObjects[obj] then return end
+    if not obj:IsA("Model") then return end
+    local pp = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
+    if not pp then return end
+    local hl = Instance.new("Highlight")
+    hl.Name = "TRKT_ESP"; hl.FillColor = Color3.fromRGB(255,0,0); hl.OutlineColor = Color3.fromRGB(255,255,255)
+    hl.FillTransparency = 0.5; hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop; hl.Parent = obj
+    local bg = Instance.new("BillboardGui")
+    bg.Name = "TRKT_ESP_Dist"; bg.Size = UDim2.new(0,200,0,50); bg.StudsOffset = Vector3.new(0,3,0)
+    bg.AlwaysOnTop = true; bg.Parent = pp
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1,0,1,0); lbl.BackgroundTransparency = 1; lbl.Text = "距离: 计算中..."
+    lbl.TextColor3 = Color3.fromRGB(255,255,255); lbl.Font = Enum.Font.GothamBold; lbl.TextSize = 16; lbl.Parent = bg
+    espObjects[obj] = {highlight = hl, billboard = bg, label = lbl}
+end
+
+local function clearESP()
+    for _, data in pairs(espObjects) do
+        if data.highlight then pcall(data.highlight.Destroy, data.highlight) end
+        if data.billboard then pcall(data.billboard.Destroy, data.billboard) end
+    end
+    espObjects = {}
+end
+
+local function enableESP()
+    local lastScan = 0
+    local conn = RunService.Heartbeat:Connect(function()
+        if not state.ESP then return end
+        if tick() - lastScan < 0.3 then return end
+        lastScan = tick()
+        local char = LocalPlayer.Character
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+        for _, rake in pairs(findRakes()) do
+            if not espObjects[rake] then createESP(rake) end
+            if root and espObjects[rake] and espObjects[rake].label then
+                local tp = (rake:IsA("Model") and (rake.PrimaryPart or rake:FindFirstChildWhichIsA("BasePart")))
+                if tp then
+                    local d = (root.Position - tp.Position).Magnitude
+                    espObjects[rake].label.Text = "距离: " .. math.floor(d) .. "米"
+                end
+            end
+        end
+    end)
+    addConnection(conn)
+end
+
+local function enableRainbow()
+    local t = 0
+    local conn = RunService.Heartbeat:Connect(function(dt)
+        if not state.RainbowESP then return end
+        t = t + dt * 3
+        local r = (math.sin(t)+1)/2; local g = (math.sin(t+math.pi/3)+1)/2; local b = (math.sin(t+2*math.pi/3)+1)/2
+        local col = Color3.new(r,g,b)
+        for _, data in pairs(espObjects) do
+            if data.highlight then data.highlight.FillColor = col; data.highlight.OutlineColor = col end
+        end
+    end)
+    addConnection(conn)
+end
+
+local function teleport(name)
+    for _, obj in pairs(Workspace:GetDescendants()) do
+        if obj.Name == name then
+            local pos
+            if obj:IsA("BasePart") then pos = obj.Position
+            elseif obj:IsA("Model") then
+                local p = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
+                if p then pos = p.Position end
+            end
+            if pos then
+                local char = LocalPlayer.Character
+                local root = char and char:FindFirstChild("HumanoidRootPart")
+                if root then root.CFrame = CFrame.new(pos + Vector3.new(0,3,0)); return end
+            end
+        end
+    end
+    Rayfield:Notify({Title="传送失败", Content="未找到 "..name, Duration=3})
+end
+
+local function getHourSelected()
+    local rake = Workspace:FindFirstChild("The_Rake")
+    return rake and rake:FindFirstChild("HourSelected")
+end
+
+local function updateMode()
+    local hs = getHourSelected()
+    local txt = "模式: " .. (hs and hs.Value or "未找到")
+    if modeLabel and modeLabel.Parent then modeLabel.Text = txt end
+    return txt
+end
+
+local function startModeDisplay()
+    if modeConnection then modeConnection:Disconnect() end
+    modeLabel = Instance.new("TextLabel")
+    modeLabel.Name = "TRKT_Mode"; modeLabel.Size = UDim2.new(0,200,0,35)
+    modeLabel.Position = UDim2.new(0.5,-100,0.02,0); modeLabel.BackgroundTransparency = 0.7
+    modeLabel.BackgroundColor3 = Color3.fromRGB(0,0,0); modeLabel.TextColor3 = Color3.fromRGB(255,255,255)
+    modeLabel.Font = Enum.Font.SourceSansBold; modeLabel.TextSize = 18; modeLabel.Text = "模式: 加载中..."
+    modeLabel.Parent = PlayerGui
+    local last = tick()
+    modeConnection = RunService.Heartbeat:Connect(function()
+        if tick() - last >= 5 then last = tick(); updateMode() end
+    end)
+    addConnection(modeConnection)
+    updateMode()
+end
+
+LocalPlayer.CharacterAdded:Connect(function(char)
+    task.wait(1)
+    clearConnections()
+    if state.God then enableGod() end
+    if state.Speed then enableSpeed() end
+    if state.Noclip then enableNoclip() end
+    if state.ESP then enableESP() end
+    if state.RainbowESP then enableRainbow() end
+    if state.InfiniteJump then enableInfJump() end
+    if state.InfiniteStamina then enableInfStamina() end
+    if state.RemoveAOE then enableRemoveAOE() end
+    if state.ExpandHitbox then enableExpandHitbox() end
+    if state.AntiAFK then enableAntiAFK() end
+    if state.RailgunIK then enableRailgunIK() end
+    startModeDisplay()
+end)
+
+local Window = Rayfield:CreateWindow({
+    Name = "TRKT 完整功能 v6.5",
+    LoadingTitle = "正在加载...",
+    LoadingSubtitle = "by JensonHirst",
+    ConfigurationSaving = { Enabled = true, FolderName = "TRKT_Full", FileName = "Config" },
+    KeySystem = false
+})
+
+local CombatTab = Window:CreateTab("战斗", 4483362458)
+CombatTab:CreateSection("核心战斗")
+CombatTab:CreateButton({ Name = "杀戮光环 (点击执行)", Callback = executeKillAura })
+CombatTab:CreateToggle({ Name = "铁轨枪秒杀", CurrentValue = false, Callback = function(v) state.RailgunIK = v; if v then enableRailgunIK() end end })
+CombatTab:CreateToggle({ Name = "无敌模式", CurrentValue = false, Callback = function(v) state.God = v; if v then enableGod() else disableGod() end end })
+CombatTab:CreateToggle({ Name = "移除AOE伤害", CurrentValue = false, Callback = function(v) state.RemoveAOE = v; if v then enableRemoveAOE() else disableRemoveAOE() end end })
+CombatTab:CreateToggle({ Name = "无限体力", CurrentValue = false, Callback = function(v) state.InfiniteStamina = v; if v then enableInfStamina() else disableInfStamina() end end })
+CombatTab:CreateToggle({ Name = "扩大Rake碰撞箱", CurrentValue = false, Callback = function(v) state.ExpandHitbox = v; if v then enableExpandHitbox() else disableExpandHitbox() end end })
+CombatTab:CreateToggle({ Name = "防挂机", CurrentValue = false, Callback = function(v) state.AntiAFK = v; if v then enableAntiAFK() end end })
+
+local VisualTab = Window:CreateTab("视觉", 4483362458)
+VisualTab:CreateSection("视觉增强")
+VisualTab:CreateToggle({ Name = "ESP (带距离)", CurrentValue = false, Callback = function(v) state.ESP = v; if v then enableESP() else clearESP() end end })
+VisualTab:CreateToggle({ Name = "彩虹ESP", CurrentValue = false, Callback = function(v) state.RainbowESP = v; if v then enableRainbow() end end })
+
+local MoveTab = Window:CreateTab("移动", 4483362458)
+MoveTab:CreateSection("移动功能")
+MoveTab:CreateToggle({ Name = "加速 (70)", CurrentValue = false, Callback = function(v) state.Speed = v; if v then enableSpeed() else disableSpeed() end end })
+MoveTab:CreateToggle({ Name = "穿墙", CurrentValue = false, Callback = function(v) state.Noclip = v; if v then enableNoclip() else disableNoclip() end end })
+MoveTab:CreateToggle({ Name = "无限跳", CurrentValue = false, Callback = function(v) state.InfiniteJump = v; if v then enableInfJump() else disableInfJump() end end })
+MoveTab:CreateSection("传送")
+MoveTab:CreateButton({ Name = "传送到商店", Callback = function() teleport("Shop") end })
+MoveTab:CreateButton({ Name = "传送到Mark", Callback = function() teleport("Mark") end })
+MoveTab:CreateButton({ Name = "传送到Rakoof", Callback = function() teleport("The_Rake"); teleport("Rake") end })
+
+local UtilityTab = Window:CreateTab("工具", 4483362458)
+UtilityTab:CreateSection("模式显示")
+UtilityTab:CreateButton({ Name = "手动刷新模式", Callback = function() Rayfield:Notify({Title="当前模式", Content=updateMode(), Duration=3}) end })
+UtilityTab:CreateButton({ Name = "检查对象", Callback = function()
+    local rake = Workspace:FindFirstChild("The_Rake")
+    local hs = rake and rake:FindFirstChild("HourSelected")
+    local msg = "The_Rake: " .. (rake and "存在" or "不存在") .. "\nHourSelected: " .. (hs and ("存在 ("..hs.Value..")") or "不存在")
+    Rayfield:Notify({Title="检查结果", Content=msg, Duration=5})
+end })
+
+local AboutTab = Window:CreateTab("关于", 4483362458)
+AboutTab:CreateSection("信息")
+AboutTab:CreateParagraph({ Title="功能列表", Content="杀戮光环、铁轨枪秒杀、无敌、ESP、彩虹ESP、加速、穿墙、无限跳、无限体力、移除AOE、扩大碰撞箱、防挂机、传送、模式显示" })
+AboutTab:CreateParagraph({ Title="版本", Content="v6.5 完整版 by JensonHirst" })
+AboutTab:CreateButton({ Name = "一键开启所有", Callback = function()
+    state.God=true; enableGod(); state.Speed=true; enableSpeed(); state.Noclip=true; enableNoclip()
+    state.ESP=true; enableESP(); state.RainbowESP=true; enableRainbow()
+    state.InfiniteJump=true; enableInfJump(); state.InfiniteStamina=true; enableInfStamina()
+    state.RemoveAOE=true; enableRemoveAOE(); state.ExpandHitbox=true; enableExpandHitbox()
+    state.AntiAFK=true; enableAntiAFK(); state.RailgunIK=true; enableRailgunIK()
+    Rayfield:Notify({Title="全部开启", Content="所有功能已激活", Duration=3})
+end })
+AboutTab:CreateButton({ Name = "一键关闭所有", Callback = function()
+    state.God=false; disableGod(); state.Speed=false; disableSpeed(); state.Noclip=false; disableNoclip()
+    state.ESP=false; clearESP(); state.RainbowESP=false
+    state.InfiniteJump=false; disableInfJump(); state.InfiniteStamina=false; disableInfStamina()
+    state.RemoveAOE=false; disableRemoveAOE(); state.ExpandHitbox=false; disableExpandHitbox()
+    state.AntiAFK=false; state.RailgunIK=false
+    Rayfield:Notify({Title="全部关闭", Content="所有功能已关闭", Duration=3})
+end })
+
+startModeDisplay()
+print("TRKT 脚本加载完成")
