@@ -25,8 +25,7 @@ local state = {
     InfiniteJump = false,
     AntiAFK = false,
     ExpandHitbox = false,
-    InfiniteStamina = false,
-    RailgunIK = false
+    InfiniteStamina = false
 }
 
 local espObjects = {}
@@ -56,6 +55,7 @@ local function clearConnections()
     if modeConnection then modeConnection:Disconnect(); modeConnection = nil end
 end
 
+-- 杀戮光环（按钮执行，外链+内置备选）
 local function executeKillAura()
     local url = "https://rawscripts.net/raw/Universal-Script-Universal-npc-hub-79259"
     local success, result = pcall(function()
@@ -80,6 +80,7 @@ local function executeKillAura()
         Rayfield:Notify({Title="杀戮光环", Content="备用链接已激活", Duration=5})
         return
     end
+    -- 内置简易版
     local cd = 0
     local conn = RunService.Heartbeat:Connect(function()
         if cd > 0 then cd = cd - 1; return end
@@ -116,37 +117,29 @@ local function executeKillAura()
     Rayfield:Notify({Title="杀戮光环", Content="内置版已激活", Duration=5})
 end
 
-local function findRailgun()
-    local char = LocalPlayer.Character
-    if char then
-        for _, t in pairs(char:GetChildren()) do
-            if t:IsA("Tool") and t.Name:lower():find("rail") then return t end
-        end
-    end
-    local bp = LocalPlayer:FindFirstChild("Backpack")
-    if bp then
-        for _, t in pairs(bp:GetChildren()) do
-            if t:IsA("Tool") and t.Name:lower():find("rail") then return t end
-        end
-    end
-    return nil
-end
-
-local function enableRailgunIK()
-    local conn = RunService.Heartbeat:Connect(function()
-        if not state.RailgunIK then return end
-        local tool = findRailgun()
-        if not tool then return end
-        for _, obj in pairs(tool:GetDescendants()) do
-            local n = obj.Name:lower()
-            if n:find("damage") or n:find("dmg") then pcall(function() obj.Value = 999999 end) end
-            if n:find("cooldown") or n:find("nextfire") or n:find("firerate") or n:find("delay") then pcall(function() obj.Value = 0 end) end
-            if n:find("range") or n:find("distance") then pcall(function() obj.Value = 9999 end) end
-        end
+-- 铁轨枪秒杀（替换为 FireServer 调用）
+local function executeRailgunKill()
+    local success, err = pcall(function()
+        local npc = workspace:WaitForChild("The_Rake"):WaitForChild("NPC")
+        local args = {
+            npc,
+            true,
+            680,
+            Vector3.new(0.9749703407287598, -0.08668036013841629, -0.2047421634197235),
+            0,
+            0,
+            false
+        }
+        game:GetService("Players").LocalPlayer:WaitForChild("Backpack"):WaitForChild("Railgun"):WaitForChild("GunScript_Server"):WaitForChild("InflictTarget"):FireServer(unpack(args))
     end)
-    addConnection(conn)
+    if success then
+        Rayfield:Notify({Title="铁轨枪秒杀", Content="已执行秒杀", Duration=3})
+    else
+        Rayfield:Notify({Title="铁轨枪秒杀", Content="执行失败: " .. tostring(err), Duration=5})
+    end
 end
 
+-- 以下函数保持不变（上帝、加速、穿墙等）
 local function enableGod()
     local conn = RunService.Heartbeat:Connect(function()
         if not state.God then return end
@@ -472,7 +465,6 @@ LocalPlayer.CharacterAdded:Connect(function(char)
     if state.RemoveAOE then enableRemoveAOE() end
     if state.ExpandHitbox then enableExpandHitbox() end
     if state.AntiAFK then enableAntiAFK() end
-    if state.RailgunIK then enableRailgunIK() end
     startModeDisplay()
 end)
 
@@ -487,7 +479,8 @@ local Window = Rayfield:CreateWindow({
 local CombatTab = Window:CreateTab("战斗", 4483362458)
 CombatTab:CreateSection("核心战斗")
 CombatTab:CreateButton({ Name = "杀戮光环 (点击执行)", Callback = executeKillAura })
-CombatTab:CreateToggle({ Name = "铁轨枪秒杀", CurrentValue = false, Callback = function(v) state.RailgunIK = v; if v then enableRailgunIK() end end })
+-- 铁轨枪秒杀改为按钮，点击执行 FireServer
+CombatTab:CreateButton({ Name = "铁轨枪秒杀 (点击执行)", Callback = executeRailgunKill })
 CombatTab:CreateToggle({ Name = "无敌模式", CurrentValue = false, Callback = function(v) state.God = v; if v then enableGod() else disableGod() end end })
 CombatTab:CreateToggle({ Name = "移除AOE伤害", CurrentValue = false, Callback = function(v) state.RemoveAOE = v; if v then enableRemoveAOE() else disableRemoveAOE() end end })
 CombatTab:CreateToggle({ Name = "无限体力", CurrentValue = false, Callback = function(v) state.InfiniteStamina = v; if v then enableInfStamina() else disableInfStamina() end end })
@@ -521,14 +514,14 @@ end })
 
 local AboutTab = Window:CreateTab("关于", 4483362458)
 AboutTab:CreateSection("信息")
-AboutTab:CreateParagraph({ Title="功能列表", Content="杀戮光环、铁轨枪秒杀、无敌、ESP、彩虹ESP、加速、穿墙、无限跳、无限体力、移除AOE、扩大碰撞箱、防挂机、传送、模式显示" })
+AboutTab:CreateParagraph({ Title="功能列表", Content="杀戮光环(点击执行)、铁轨枪秒杀(点击执行)、无敌、ESP、彩虹ESP、加速、穿墙、无限跳、无限体力、移除AOE、扩大碰撞箱、防挂机、传送、模式显示" })
 AboutTab:CreateParagraph({ Title="版本", Content="v6.5 完整版 by JensonHirst" })
 AboutTab:CreateButton({ Name = "一键开启所有", Callback = function()
     state.God=true; enableGod(); state.Speed=true; enableSpeed(); state.Noclip=true; enableNoclip()
     state.ESP=true; enableESP(); state.RainbowESP=true; enableRainbow()
     state.InfiniteJump=true; enableInfJump(); state.InfiniteStamina=true; enableInfStamina()
     state.RemoveAOE=true; enableRemoveAOE(); state.ExpandHitbox=true; enableExpandHitbox()
-    state.AntiAFK=true; enableAntiAFK(); state.RailgunIK=true; enableRailgunIK()
+    state.AntiAFK=true; enableAntiAFK()
     Rayfield:Notify({Title="全部开启", Content="所有功能已激活", Duration=3})
 end })
 AboutTab:CreateButton({ Name = "一键关闭所有", Callback = function()
@@ -536,7 +529,7 @@ AboutTab:CreateButton({ Name = "一键关闭所有", Callback = function()
     state.ESP=false; clearESP(); state.RainbowESP=false
     state.InfiniteJump=false; disableInfJump(); state.InfiniteStamina=false; disableInfStamina()
     state.RemoveAOE=false; disableRemoveAOE(); state.ExpandHitbox=false; disableExpandHitbox()
-    state.AntiAFK=false; state.RailgunIK=false
+    state.AntiAFK=false
     Rayfield:Notify({Title="全部关闭", Content="所有功能已关闭", Duration=3})
 end })
 
